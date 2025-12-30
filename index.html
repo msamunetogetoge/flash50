@@ -33,8 +33,38 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 24px;
+      gap: 16px;
     }
+
+    /* モード切り替え */
+    .mode-toggle {
+      display: flex;
+      width: 100%;
+      gap: 8px;
+      background: #ffffff;
+      padding: 8px;
+      border-radius: 999px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+      box-sizing: border-box;
+    }
+    .mode-button {
+      flex: 1;
+      padding: 8px 4px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mode-button.active {
+      background: #007aff;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+
     .kana {
       font-size: clamp(120px, 30vh, 180px);
       font-weight: 800;
@@ -45,6 +75,7 @@
       background: #ffffff;
       box-shadow: 0 8px 24px rgba(0,0,0,0.08);
       width: 100%;
+      box-sizing: border-box;
     }
     .controls {
       width: 100%;
@@ -59,20 +90,34 @@
     input[type="range"] { flex: 1; }
     .speed-value { margin-top: 4px; font-size: 12px; color: #666; }
     .buttons { display: flex; gap: 12px; margin-top: 16px; }
-    button {
-      flex: 1; padding: 12px; font-size: 18px; font-weight: 700;
-      border-radius: 999px; border: none; cursor: pointer;
+    button.control-btn {
+      flex: 1;
+      padding: 12px;
+      font-size: 18px;
+      font-weight: 700;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
-    button:disabled { opacity: 0.4; cursor: default; }
+    button.control-btn:disabled { opacity: 0.4; cursor: default; }
     #start { background: #007aff; color: white; }
     #stop { background: #ff3b30; color: white; }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="kana" id="kana">あ</div>
+    <!-- モード切り替え -->
+    <div class="mode-toggle">
+      <button id="mode-hiragana" class="mode-button active">ひらがな</button>
+      <button id="mode-katakana" class="mode-button">カタカナ</button>
+      <button id="mode-number"   class="mode-button">数字(0〜99)</button>
+    </div>
 
+    <!-- 表示エリア -->
+    <div class="kana" id="display">あ</div>
+
+    <!-- コントロール -->
     <div class="controls">
       <div class="speed-label-main">スピード（速い ←→ 遅い）</div>
       <div class="speed-row">
@@ -85,14 +130,24 @@
       </div>
 
       <div class="buttons">
-        <button id="start">スタート</button>
-        <button id="stop" disabled>ストップ</button>
+        <button id="start" class="control-btn">スタート</button>
+        <button id="stop"  class="control-btn" disabled>ストップ</button>
       </div>
     </div>
   </div>
 
   <script>
-    const kanaList = [
+    // モード定義
+    const Mode = {
+      HIRAGANA: "hiragana",
+      KATAKANA: "katakana",
+      NUMBER: "number",
+    };
+
+    let currentMode = Mode.HIRAGANA;
+
+    // ひらがな 50音
+    const hiraganaList = [
       "あ","い","う","え","お",
       "か","き","く","け","こ",
       "さ","し","す","せ","そ",
@@ -105,33 +160,71 @@
       "わ","を","ん"
     ];
 
-    const kanaEl = document.getElementById("kana");
-    const speedInput = document.getElementById("speed");
-    const speedValue = document.getElementById("speedValue");
-    const startBtn = document.getElementById("start");
-    const stopBtn = document.getElementById("stop");
+    // カタカナ 50音
+    const katakanaList = [
+      "ア","イ","ウ","エ","オ",
+      "カ","キ","ク","ケ","コ",
+      "サ","シ","ス","セ","ソ",
+      "タ","チ","ツ","テ","ト",
+      "ナ","ニ","ヌ","ネ","ノ",
+      "ハ","ヒ","フ","ヘ","ホ",
+      "マ","ミ","ム","メ","モ",
+      "ヤ","ユ","ヨ",
+      "ラ","リ","ル","レ","ロ",
+      "ワ","ヲ","ン"
+    ];
+
+    // 数字 0〜99
+    const numberList = Array.from({ length: 100 }, (_, i) => String(i));
+
+    function getCurrentList() {
+      switch (currentMode) {
+        case Mode.KATAKANA:
+          return katakanaList;
+        case Mode.NUMBER:
+          return numberList;
+        case Mode.HIRAGANA:
+        default:
+          return hiraganaList;
+      }
+    }
+
+    // 要素取得
+    const displayEl   = document.getElementById("display");
+    const speedInput  = document.getElementById("speed");
+    const speedValue  = document.getElementById("speedValue");
+    const startBtn    = document.getElementById("start");
+    const stopBtn     = document.getElementById("stop");
+    const modeHiraBtn = document.getElementById("mode-hiragana");
+    const modeKataBtn = document.getElementById("mode-katakana");
+    const modeNumBtn  = document.getElementById("mode-number");
 
     let timerId = null;
-    let intervalMs = 500;
+    let intervalMs = 500; // 0.5秒
 
-    function showRandomKana() {
-      const index = Math.floor(Math.random() * kanaList.length);
-      kanaEl.textContent = kanaList[index];
+    function showRandomItem() {
+      const list = getCurrentList();
+      if (list.length === 0) return;
+      const index = Math.floor(Math.random() * list.length);
+      displayEl.textContent = list[index];
     }
 
     function updateSpeedFromSlider() {
       const seconds = parseFloat(speedInput.value);
       intervalMs = seconds * 1000;
       speedValue.textContent = seconds.toFixed(2);
-      if (timerId !== null) restartTimer();
+
+      if (timerId !== null) {
+        restartTimer();
+      }
     }
 
     function start() {
       if (timerId !== null) return;
       startBtn.disabled = true;
       stopBtn.disabled = false;
-      showRandomKana();
-      timerId = setInterval(showRandomKana, intervalMs);
+      showRandomItem();
+      timerId = setInterval(showRandomItem, intervalMs);
     }
 
     function stop() {
@@ -145,13 +238,47 @@
     function restartTimer() {
       if (timerId === null) return;
       clearInterval(timerId);
-      timerId = setInterval(showRandomKana, intervalMs);
+      timerId = setInterval(showRandomItem, intervalMs);
     }
 
+    // モードボタンの見た目更新
+    function updateModeButtons() {
+      [modeHiraBtn, modeKataBtn, modeNumBtn].forEach(btn => {
+        btn.classList.remove("active");
+      });
+      switch (currentMode) {
+        case Mode.HIRAGANA:
+          modeHiraBtn.classList.add("active");
+          break;
+        case Mode.KATAKANA:
+          modeKataBtn.classList.add("active");
+          break;
+        case Mode.NUMBER:
+          modeNumBtn.classList.add("active");
+          break;
+      }
+    }
+
+    // モード変更
+    function setMode(mode) {
+      currentMode = mode;
+      updateModeButtons();
+      // 変更した瞬間に1つ表示更新
+      showRandomItem();
+    }
+
+    // イベント登録
     speedInput.addEventListener("input", updateSpeedFromSlider);
     startBtn.addEventListener("click", start);
     stopBtn.addEventListener("click", stop);
+
+    modeHiraBtn.addEventListener("click", () => setMode(Mode.HIRAGANA));
+    modeKataBtn.addEventListener("click", () => setMode(Mode.KATAKANA));
+    modeNumBtn.addEventListener("click",  () => setMode(Mode.NUMBER));
+
+    // 初期状態
     updateSpeedFromSlider();
+    showRandomItem();
   </script>
 </body>
 </html>
